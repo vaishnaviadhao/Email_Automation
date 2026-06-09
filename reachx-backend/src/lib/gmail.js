@@ -32,7 +32,7 @@ async function exchangeCodeForTokens(code, clientId, clientSecret) {
   const oauth2 = google.oauth2({ version: "v2", auth: client });
   const { data } = await oauth2.userinfo.get();
 
-  return { email: data.email, tokens };
+  return { email: data.email, name: data.name ?? null, tokens };
 }
 
 async function getTransporterForAccount(gmailAccount) {

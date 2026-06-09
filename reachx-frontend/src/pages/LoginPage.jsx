@@ -1,16 +1,47 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, setToken, setUser } from "../lib/api";
 import horizontalLogo from "../assests/transparent-horizontal-removebg-preview.png";
 
 const inputCls = "w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-300 transition";
 
+function decodeBase64Url(value) {
+  try {
+    const base64 = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4);
+    return JSON.parse(window.atob(base64));
+  } catch {
+    return null;
+  }
+}
+
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const token = searchParams.get("token");
+    const userParam = searchParams.get("user");
+    const errorParam = searchParams.get("error");
+    const detailsParam = searchParams.get("details");
+
+    if (errorParam) {
+      setError(`OAuth failed: ${decodeURIComponent(detailsParam || errorParam)}`);
+      return;
+    }
+
+    if (!token) return;
+
+    setToken(token);
+    if (userParam) {
+      const userObj = decodeBase64Url(userParam);
+      if (userObj) setUser(userObj);
+    }
+    navigate("/dashboard");
+  }, [searchParams, navigate]);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -20,6 +51,24 @@ export default function LoginPage() {
     const data = await res.json();
     if (!res.ok) { setError(data.error ?? "Invalid email or password"); setLoading(false); }
     else { setToken(data.token); setUser(data.user); navigate("/dashboard"); }
+  }
+
+  async function handleGoogleSignIn() {
+    setLoading(true);
+    setError("");
+    const res = await api.get("/api/auth/google-url");
+    const data = await res.json();
+    if (!res.ok) { setError(data.error ?? "Unable to connect with Google"); setLoading(false); return; }
+    window.location.href = data.url;
+  }
+
+  async function handleZohoSignIn() {
+    setLoading(true);
+    setError("");
+    const res = await api.get("/api/auth/zoho-url");
+    const data = await res.json();
+    if (!res.ok) { setError(data.error ?? "Unable to connect with Zoho"); setLoading(false); return; }
+    window.location.href = data.url;
   }
 
   return (
@@ -59,9 +108,13 @@ export default function LoginPage() {
             <span className="text-[11px] uppercase tracking-[0.24em] text-slate-400">or</span>
             <div className="h-px flex-1 bg-slate-200" />
           </div>
-          <button type="button" className="w-full border border-slate-200 rounded-2xl py-3 text-sm font-medium text-slate-700 inline-flex items-center justify-center gap-2 hover:bg-slate-50 transition">
+          <button type="button" onClick={handleGoogleSignIn} disabled={loading} className="w-full border border-slate-200 rounded-2xl py-3 text-sm font-medium text-slate-700 inline-flex items-center justify-center gap-2 hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed">
             <span className="text-base">G</span>
             Continue with Google
+          </button>
+          <button type="button" onClick={handleZohoSignIn} disabled={loading} className="w-full border border-slate-200 rounded-2xl py-3 text-sm font-medium text-slate-700 inline-flex items-center justify-center gap-2 hover:bg-slate-50 transition disabled:opacity-50 disabled:cursor-not-allowed mt-3">
+            <span className="text-base">Z</span>
+            Continue with Zoho
           </button>
           <p className="text-center text-sm text-slate-500 mt-6">
             Don't have an account?{' '}

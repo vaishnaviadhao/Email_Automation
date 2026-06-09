@@ -17,7 +17,7 @@ async function sendEmail(options) {
 
   if (!fromEmail) throw new Error("SMTP_FROM_EMAIL is not configured");
 
-  return transporter.sendMail({
+  const mail = {
     from: `"${fromName}" <${fromEmail}>`,
     to: options.to,
     subject: options.subject,
@@ -28,7 +28,13 @@ async function sendEmail(options) {
       ...(options.headers ?? {}),
       "Return-Path": bounceEmail,
     },
-  });
+  };
+
+  if (Array.isArray(options.attachments) && options.attachments.length > 0) {
+    mail.attachments = options.attachments;
+  }
+
+  return transporter.sendMail(mail);
 }
 
 module.exports = { sendEmail };

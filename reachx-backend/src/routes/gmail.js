@@ -1,4 +1,5 @@
 const express = require("express");
+const jwt = require("jsonwebtoken");
 const { prisma } = require("../lib/prisma");
 const { requireAuth } = require("../middleware/auth");
 const { getAuthUrl, exchangeCodeForTokens } = require("../lib/gmail");
@@ -12,7 +13,7 @@ router.get("/auth-url", requireAuth, (req, res) => {
   const clientSecret = req.query.clientSecret || process.env.GOOGLE_CLIENT_SECRET;
 
   const state = Buffer.from(
-    JSON.stringify({ userId: req.user.id, clientId, clientSecret })
+    JSON.stringify({ flow: "connect", userId: req.user.id, clientId, clientSecret })
   ).toString("base64url");
 
   const url = getAuthUrl(clientId, clientSecret) + `&state=${state}`;
@@ -28,17 +29,35 @@ router.get("/callback", async (req, res) => {
     return res.redirect(`${frontendUrl}/dashboard/settings?gmail=error`);
   }
 
-  try {
-    const { userId, clientId, clientSecret } = JSON.parse(
-      Buffer.from(state, "base64url").toString()
-    );
+  let flow = "connect";
 
-    const { email, tokens } = await exchangeCodeForTokens(code, clientId, clientSecret);
+  try {
+    const parsedState = JSON.parse(Buffer.from(state, "base64url").toString());
+    flow = parsedState.flow ?? "connect";
+    const { userId, clientId, clientSecret } = parsedState;
+
+    const { email, name, tokens } = await exchangeCodeForTokens(code, clientId, clientSecret);
+
+    let user;
+
+    if (flow === "connect") {
+      user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        return res.redirect(`${frontendUrl}/dashboard/settings?gmail=error`);
+      }
+    } else {
+      user = await prisma.user.findUnique({ where: { email } });
+      if (!user) {
+        user = await prisma.user.create({ data: { email, name } });
+      } else if (!user.name && name) {
+        user = await prisma.user.update({ where: { id: user.id }, data: { name } });
+      }
+    }
 
     await prisma.gmailAccount.upsert({
-      where: { userId_email: { userId, email } },
+      where: { userId_email: { userId: user.id, email } },
       create: {
-        userId,
+        userId: user.id,
         email,
         refreshToken: tokens.refresh_token,
         accessToken: tokens.access_token ?? null,
@@ -57,10 +76,18 @@ router.get("/callback", async (req, res) => {
       },
     });
 
-    res.redirect(`${frontendUrl}/dashboard/settings?gmail=connected`);
+    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    const userPayload = Buffer.from(JSON.stringify({ id: user.id, email: user.email, name: user.name ?? "" })).toString("base64url");
+
+    if (flow === "connect") {
+      return res.redirect(`${frontendUrl}/dashboard/settings?gmail=connected`);
+    }
+
+    return res.redirect(`${frontendUrl}/login?token=${encodeURIComponent(token)}&user=${encodeURIComponent(userPayload)}&gmail=connected`);
   } catch (err) {
     console.error("[gmail callback]", err);
-    res.redirect(`${frontendUrl}/dashboard/settings?gmail=error`);
+    const redirectPath = flow === "login" ? "/login?gmail=error" : "/dashboard/settings?gmail=error";
+    res.redirect(`${frontendUrl}${redirectPath}`);
   }
 });
 

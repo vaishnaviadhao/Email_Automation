@@ -13,7 +13,9 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [gmailAccounts, setGmailAccounts] = useState([]);
+  const [zohoAccounts, setZohoAccounts] = useState([]);
   const [gmailMsg, setGmailMsg] = useState(null);
+  const [zohoMsg, setZohoMsg] = useState(null);
   const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
@@ -22,16 +24,26 @@ export default function SettingsPage() {
       setLoading(false);
     });
     loadGmail();
+    loadZoho();
 
     const gmailStatus = searchParams.get("gmail");
+    const zohoStatus = searchParams.get("zoho");
     if (gmailStatus === "connected") setGmailMsg({ type: "success", text: "Gmail account connected successfully." });
     if (gmailStatus === "error") setGmailMsg({ type: "error", text: "Failed to connect Gmail. Please try again." });
+    if (zohoStatus === "connected") setZohoMsg({ type: "success", text: "Zoho account connected successfully." });
+    if (zohoStatus === "error") setZohoMsg({ type: "error", text: "Failed to connect Zoho. Please try again." });
   }, []);
 
   async function loadGmail() {
     const res = await api.get("/api/gmail/accounts");
     const data = await res.json();
     setGmailAccounts(Array.isArray(data) ? data : []);
+  }
+
+  async function loadZoho() {
+    const res = await api.get("/api/zoho/accounts");
+    const data = await res.json();
+    setZohoAccounts(Array.isArray(data) ? data : []);
   }
 
   async function handleSave() {
@@ -60,10 +72,34 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleConnectZoho(clientId, clientSecret) {
+    setConnecting(true);
+    try {
+      const params = new URLSearchParams({ clientId, clientSecret });
+      const res = await api.get(`/api/zoho/auth-url?${params}`);
+      const { url } = await res.json();
+      window.location.href = url;
+    } catch {
+      setZohoMsg({ type: "error", text: "Could not start Zoho connection. Try again." });
+      setConnecting(false);
+    }
+  }
+
   async function handleDisconnectGmail(id) {
     if (!confirm("Disconnect this Gmail account?")) return;
     await api.delete(`/api/gmail/accounts/${id}`);
     await loadGmail();
+  }
+
+  async function handleToggleZoho(id, isActive) {
+    await api.patch(`/api/zoho/accounts/${id}`, { isActive: !isActive });
+    await loadZoho();
+  }
+
+  async function handleDisconnectZoho(id) {
+    if (!confirm("Disconnect this Zoho account?")) return;
+    await api.delete(`/api/zoho/accounts/${id}`);
+    await loadZoho();
   }
 
   return (
@@ -117,35 +153,18 @@ export default function SettingsPage() {
 
               {/* Gmail Accounts */}
               <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Gmail Sending Accounts</p>
                     <p className="text-xs text-slate-400 mt-1">Connected accounts are used round-robin to send campaigns.</p>
                   </div>
-                  <div className="flex gap-2 flex-wrap justify-end">
-                    <button
-                      onClick={() => handleConnectGmail(
-                        import.meta.env.VITE_GMAIL_CLIENT_ID_1,
-                        import.meta.env.VITE_GMAIL_CLIENT_SECRET_1
-                      )}
-                      disabled={connecting}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-all"
-                    >
-                      <GmailIcon />
-                      {connecting ? "..." : "Connect veeekamble@gmail.com"}
-                    </button>
-                    <button
-                      onClick={() => handleConnectGmail(
-                        import.meta.env.VITE_GMAIL_CLIENT_ID_2,
-                        import.meta.env.VITE_GMAIL_CLIENT_SECRET_2
-                      )}
-                      disabled={connecting}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-all"
-                    >
-                      <GmailIcon />
-                      {connecting ? "..." : "Connect kamblevidhishaa@gmail.com"}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleConnectGmail()}
+                    className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+                  >
+                    Connect Gmail
+                  </button>
                 </div>
 
                 {gmailMsg && (
@@ -182,6 +201,64 @@ export default function SettingsPage() {
                           </button>
                           <button
                             onClick={() => handleDisconnectGmail(acc.id)}
+                            className="text-xs text-slate-400 hover:text-rose-500 border border-slate-200 hover:border-rose-200 hover:bg-rose-50 px-2.5 py-1 rounded-lg transition-all"
+                          >
+                            Disconnect
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Zoho Sending Accounts</p>
+                    <p className="text-xs text-slate-400 mt-1">Connect Zoho accounts to send campaigns through Zoho SMTP.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleConnectZoho()}
+                    className="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition"
+                  >
+                    Connect Zoho
+                  </button>
+                </div>
+
+                {zohoMsg && (
+                  <div className={`text-xs px-3 py-2.5 rounded-xl border ${zohoMsg.type === "success" ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-rose-600 bg-rose-50 border-rose-200"}`}>
+                    {zohoMsg.text}
+                  </div>
+                )}
+
+                {zohoAccounts.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 text-sm">
+                    No Zoho accounts connected yet. Click "Connect Zoho" to add one.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {zohoAccounts.map((acc) => (
+                      <div key={acc.id} className="flex items-center justify-between py-3 gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-sky-50 border border-sky-100 flex items-center justify-center shrink-0">
+                            <span className="text-sky-600 font-semibold">Z</span>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-slate-800">{acc.email}</p>
+                            <p className="text-[11px] text-slate-400">Connected via OAuth2</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => handleToggleZoho(acc.id, acc.isActive)}
+                            className={`text-xs px-2.5 py-1 rounded-lg border font-medium transition-all ${acc.isActive ? "text-emerald-600 bg-emerald-50 border-emerald-200 hover:bg-emerald-100" : "text-slate-400 bg-slate-50 border-slate-200 hover:bg-slate-100"}`}
+                          >
+                            {acc.isActive ? "Active" : "Paused"}
+                          </button>
+                          <button
+                            onClick={() => handleDisconnectZoho(acc.id)}
                             className="text-xs text-slate-400 hover:text-rose-500 border border-slate-200 hover:border-rose-200 hover:bg-rose-50 px-2.5 py-1 rounded-lg transition-all"
                           >
                             Disconnect

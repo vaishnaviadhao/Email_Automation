@@ -22,6 +22,7 @@ model User {
   segments      Segment[]
   pixelAssets   PixelAsset[]
   gmailAccounts GmailAccount[]
+  zohoAccounts  ZohoAccount[]
 }
 
 model Contact {
@@ -81,6 +82,20 @@ model Campaign {
   user       User        @relation(fields: [userId], references: [id])
   recipients Recipient[]
   events     EmailEvent[]
+  attachments CampaignAttachment[]
+}
+
+model CampaignAttachment {
+  id             String   @id @default(cuid())
+  campaignId     String
+  filename       String
+  storedFilename String
+  url            String
+  contentType    String?
+  size           Int?
+  createdAt      DateTime @default(now())
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 }
 
 model Recipient {
@@ -150,6 +165,24 @@ model GmailAccount {
   tokenExpiry  DateTime?
   clientId     String?
   clientSecret String?
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+
+  user         User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, email])
+}
+
+model ZohoAccount {
+  id           String    @id @default(cuid())
+  userId       String
+  email        String
+  refreshToken String
+  accessToken  String?
+  tokenExpiry  DateTime?
+  clientId     String?
+  clientSecret String?
+  accountId    String?
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
 
